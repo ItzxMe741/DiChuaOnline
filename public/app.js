@@ -45,6 +45,7 @@
     };
 
     let ws = null;
+    let isLeavingPage = false;
     let scene, camera, renderer;
     let localPlayer = null;
     const remotePlayers = new Map();
@@ -122,6 +123,16 @@
     // 2. INITIALIZATION
     // ==========================================
     window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('pagehide', () => {
+            isLeavingPage = true;
+            if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, 'Leaving temple');
+        });
+        window.addEventListener('pageshow', (event) => {
+            if (!event.persisted || !isLeavingPage) return;
+            isLeavingPage = false;
+            if (!ws || ws.readyState >= WebSocket.CLOSING) connectWebSocket();
+        });
+
         setupWelcomeModal();
         initThree();
         buildDistantMountainsAndSky();
@@ -154,6 +165,12 @@
         enterBtn.addEventListener('click', () => {
             const name = nameInput.value.trim();
             if (name) STATE.playerName = name;
+            // Start just inside the front gate so the player's own avatar is
+            // clearly visible in the first camera view.
+            STATE.camera.theta = Math.PI;
+            STATE.camera.phi = 0.38;
+            STATE.camera.radius = 7.8;
+            STATE.camera.targetY = 1.25;
             if (window.matchMedia('(pointer: coarse)').matches && screen.orientation && screen.orientation.lock) {
                 screen.orientation.lock('landscape').catch(() => {});
             }
@@ -2581,9 +2598,11 @@
 
     function createLocalPlayer() {
         localPlayer = createChibiAvatarMesh(STATE.playerName, STATE.robeColor);
-        localPlayer.group.position.set(0, 0, 14);
+        localPlayer.group.position.set(0, 0, 25.5);
         localPlayer.group.rotation.y = Math.PI;
+        localPlayer.group.visible = true;
         scene.add(localPlayer.group);
+        updateCameraPosition();
     }
 
     function showChatBubble(avatar, text) {
@@ -3167,9 +3186,11 @@
         });
 
         const container = document.getElementById('canvas-container');
+        let cameraPointerId = null;
 
         container.addEventListener('pointerdown', (e) => {
-            if (e.button === 0 && !e.target.closest('.interactive')) {
+            if (e.button === 0 && cameraPointerId === null && !e.target.closest('.interactive')) {
+                cameraPointerId = e.pointerId;
                 STATE.camera.isMouseDown = true;
                 STATE.camera.mouseX = e.clientX;
                 STATE.camera.mouseY = e.clientY;
@@ -3178,7 +3199,7 @@
         });
 
         window.addEventListener('pointermove', (e) => {
-            if (!STATE.camera.isMouseDown) return;
+            if (!STATE.camera.isMouseDown || e.pointerId !== cameraPointerId) return;
             const dx = e.clientX - STATE.camera.mouseX;
             const dy = e.clientY - STATE.camera.mouseY;
 
@@ -3190,11 +3211,15 @@
             updateCameraPosition();
         });
 
-        const stopCameraDrag = () => {
+        const stopCameraDrag = (e) => {
+            if (cameraPointerId === null || (e.pointerId !== undefined && e.pointerId !== cameraPointerId)) return;
+            cameraPointerId = null;
             STATE.camera.isMouseDown = false;
         };
         window.addEventListener('pointerup', stopCameraDrag);
         window.addEventListener('pointercancel', stopCameraDrag);
+        container.addEventListener('lostpointercapture', stopCameraDrag);
+        window.addEventListener('blur', stopCameraDrag);
 
         window.addEventListener('wheel', (e) => {
             STATE.camera.radius = Math.max(3.2, Math.min(16.0, STATE.camera.radius + e.deltaY * 0.01));
@@ -3424,7 +3449,11 @@
             ws.send(JSON.stringify({
                 type: 'init_player',
                 name: STATE.playerName,
-                robe: STATE.robeColor
+                robe: STATE.robeColor,
+                x: localPlayer ? localPlayer.group.position.x : 0,
+                y: localPlayer ? localPlayer.group.position.y : 0,
+                z: localPlayer ? localPlayer.group.position.z : 25.5,
+                rotY: localPlayer ? localPlayer.group.rotation.y : Math.PI
             }));
         };
 
@@ -3439,7 +3468,10 @@
 
         ws.onclose = () => {
             STATE.connected = false;
-            setTimeout(connectWebSocket, 3000);
+            if (isLeavingPage) return;
+            setTimeout(() => {
+                if (!isLeavingPage) connectWebSocket();
+            }, 3000);
         };
     }
 
@@ -3460,6 +3492,8 @@
                 break;
 
             case 'player_moved':
+                // A client should never render its own server echo as a remote avatar.
+                if (data.id === STATE.playerId) break;
                 if (remotePlayers.has(data.id)) {
                     const rp = remotePlayers.get(data.id);
                     rp.targetPos.set(data.x, data.y, data.z);

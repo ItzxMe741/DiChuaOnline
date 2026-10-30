@@ -31,6 +31,7 @@ ACTIVE_PLAYERS_KEY = f"{ROOM_PREFIX}:active"
 INCENSE_KEY = f"{ROOM_PREFIX}:incense"
 CHAT_KEY = f"{ROOM_PREFIX}:chat"
 EVENTS_CHANNEL = f"{ROOM_PREFIX}:events"
+PRESENCE_TIMEOUT_SECONDS = 45
 
 # Store connected players
 # { connection_id: { "ws": WebSocket, "data": { "id", "name", "robe", "x", "y", "z", "rotY", "action", "last_active" } } }
@@ -45,21 +46,34 @@ chat_history = []
 
 async def save_shared_player(player_data: dict):
     if not redis_client:
-        return
+        return False
     player_id = player_data["id"]
-    await redis_client.hset(PLAYERS_KEY, player_id, json.dumps(player_data))
+    created = await redis_client.hset(PLAYERS_KEY, player_id, json.dumps(player_data))
     await redis_client.zadd(ACTIVE_PLAYERS_KEY, {player_id: time.time()})
+    return bool(created)
+
+
+async def prune_stale_players():
+    if not redis_client:
+        return []
+    cutoff = time.time() - PRESENCE_TIMEOUT_SECONDS
+    stale_ids = await redis_client.zrangebyscore(ACTIVE_PLAYERS_KEY, "-inf", cutoff)
+    if not stale_ids:
+        return []
+
+    await redis_client.zrem(ACTIVE_PLAYERS_KEY, *stale_ids)
+    await redis_client.hdel(PLAYERS_KEY, *stale_ids)
+    for stale_id in stale_ids:
+        await broadcast({"type": "player_left", "id": stale_id})
+    return stale_ids
 
 
 async def load_shared_players(exclude_id: str = None):
     if not redis_client:
         return [p["data"] for p in players.values() if p["data"]["id"] != exclude_id]
 
-    cutoff = time.time() - 120
-    stale_ids = await redis_client.zrangebyscore(ACTIVE_PLAYERS_KEY, "-inf", cutoff)
-    if stale_ids:
-        await redis_client.zrem(ACTIVE_PLAYERS_KEY, *stale_ids)
-        await redis_client.hdel(PLAYERS_KEY, *stale_ids)
+    await prune_stale_players()
+    cutoff = time.time() - PRESENCE_TIMEOUT_SECONDS
 
     active_ids = await redis_client.zrangebyscore(ACTIVE_PLAYERS_KEY, cutoff, "+inf")
     stored_players = await redis_client.hgetall(PLAYERS_KEY)
@@ -83,20 +97,27 @@ async def save_shared_item(key: str, item: dict, keep: int):
         await redis_client.ltrim(key, -keep, -1)
 
 
-async def forward_remote_events(websocket: WebSocket, player_id: str, pubsub):
-    async for event in pubsub.listen():
-        if event.get("type") != "message":
-            continue
+async def forward_remote_events(websocket: WebSocket, player_id: str):
+    while True:
+        pubsub = redis_client.pubsub()
         try:
-            envelope = json.loads(event["data"])
-            if envelope.get("instance") == INSTANCE_ID or envelope.get("exclude_id") == player_id:
-                continue
-            await websocket.send_json(envelope["message"])
+            await pubsub.subscribe(EVENTS_CHANNEL)
+            async for event in pubsub.listen():
+                if event.get("type") != "message":
+                    continue
+                envelope = json.loads(event["data"])
+                if envelope.get("instance") == INSTANCE_ID or envelope.get("exclude_id") == player_id:
+                    continue
+                await websocket.send_json(envelope["message"])
         except WebSocketDisconnect:
             return
         except Exception as error:
-            print(f"Error forwarding shared event to {player_id}: {error}")
-            return
+            print(f"Error forwarding shared events to {player_id}: {error}")
+        finally:
+            with suppress(Exception):
+                await pubsub.unsubscribe(EVENTS_CHANNEL)
+                await pubsub.aclose()
+        await asyncio.sleep(1)
 
 
 async def remember_chat_message(message: dict):
@@ -128,7 +149,6 @@ async def health_check():
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     player_id = str(uuid.uuid4())[:8]
-    pubsub = None
     relay_task = None
     
     player_data = {
@@ -137,7 +157,7 @@ async def websocket_endpoint(websocket: WebSocket):
         "robe": "blue",
         "x": 0.0,
         "y": 0.0,
-        "z": 16.0,
+        "z": 25.5,
         "rotY": 3.14159,
         "action": "idle",
         "chantCount": 0
@@ -145,13 +165,12 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         if redis_client:
-            pubsub = redis_client.pubsub()
-            await pubsub.subscribe(EVENTS_CHANNEL)
-            relay_task = asyncio.create_task(forward_remote_events(websocket, player_id, pubsub))
+            relay_task = asyncio.create_task(forward_remote_events(websocket, player_id))
 
         players[player_id] = {"ws": websocket, "data": player_data}
         await save_shared_player(player_data)
         last_shared_save = time.monotonic()
+        last_presence_cleanup = last_shared_save
 
         # Load one shared room snapshot so visitors on different Vercel instances meet.
         all_players_data = await load_shared_players(exclude_id=player_id)
@@ -180,6 +199,10 @@ async def websocket_endpoint(websocket: WebSocket):
             if msg_type == "init_player":
                 player_data["name"] = msg.get("name", "Phật tử")[:25]
                 player_data["robe"] = msg.get("robe", "blue")
+                player_data["x"] = float(msg.get("x", player_data["x"]))
+                player_data["y"] = float(msg.get("y", player_data["y"]))
+                player_data["z"] = float(msg.get("z", player_data["z"]))
+                player_data["rotY"] = float(msg.get("rotY", player_data["rotY"]))
                 await save_shared_player(player_data)
                 last_shared_save = time.monotonic()
                 await broadcast({
@@ -205,8 +228,16 @@ async def websocket_endpoint(websocket: WebSocket):
                 player_data["action"] = msg.get("action", "idle")
                 now = time.monotonic()
                 if now - last_shared_save >= 1:
-                    await save_shared_player(player_data)
+                    was_missing = await save_shared_player(player_data)
                     last_shared_save = now
+                    if was_missing:
+                        await broadcast({
+                            "type": "player_updated",
+                            "player": player_data
+                        }, exclude_id=player_id)
+                if now - last_presence_cleanup >= 10:
+                    await prune_stale_players()
+                    last_presence_cleanup = now
                 
                 # Relay movement to other players
                 await broadcast({
@@ -294,10 +325,6 @@ async def websocket_endpoint(websocket: WebSocket):
             relay_task.cancel()
             with suppress(asyncio.CancelledError):
                 await relay_task
-        if pubsub:
-            with suppress(Exception):
-                await pubsub.unsubscribe(EVENTS_CHANNEL)
-                await pubsub.aclose()
 
 async def broadcast(message: dict, exclude_id: str = None):
     dead_ids = []
