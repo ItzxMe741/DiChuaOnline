@@ -318,7 +318,6 @@ async def broadcast(message: dict, exclude_id: str = None):
             print(f"Error broadcasting shared event: {error}")
 
 # Mount static folder
-os.makedirs("public", exist_ok=True)
 app.mount("/static", StaticFiles(directory="public"), name="static")
 
 if __name__ == "__main__":
