@@ -1028,6 +1028,115 @@ body, html {
         font-size: 12px;
         text-align: center;
     }
+
+    .rosary-modal {
+        left: auto;
+        right: max(12px, env(safe-area-inset-right));
+        top: 50%;
+        transform: translateY(-50%);
+        width: min(360px, calc(100vw - 24px));
+        max-height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        grid-template-columns: 150px minmax(0, 1fr);
+        grid-template-rows: auto auto auto;
+        grid-template-areas:
+            "title title"
+            "ring mantra"
+            "ring hint";
+        align-items: center;
+        gap: 8px 12px;
+        overflow-y: auto;
+        padding: 14px 16px;
+        border-radius: 18px;
+    }
+
+    .rosary-modal h3 {
+        grid-area: title;
+        padding-right: 26px;
+        font-size: 17px !important;
+    }
+
+    .rosary-modal > p:not(.rosary-hint) {
+        display: none;
+    }
+
+    .rosary-ring-container {
+        grid-area: ring;
+        width: 150px;
+        height: 150px;
+        margin: 0;
+    }
+
+    #rosary-canvas {
+        width: 150px;
+        height: 150px;
+    }
+
+    .bead-counter-num {
+        font-size: 27px;
+    }
+
+    .bead-counter-label,
+    #bead-step-label {
+        font-size: 9px !important;
+    }
+
+    .mantra-text {
+        grid-area: mantra;
+        min-height: 0;
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.35;
+        letter-spacing: 0;
+    }
+
+    .rosary-hint {
+        grid-area: hint;
+        margin: 0;
+        padding: 7px;
+        font-size: 9px;
+        line-height: 1.3;
+    }
+
+    .rosary-modal .close-modal-btn,
+    .fortune-modal .close-modal-btn {
+        top: 4px;
+        right: 4px;
+        width: 42px;
+        height: 42px;
+        font-size: 28px;
+        z-index: 2;
+    }
+
+    .fortune-modal {
+        left: auto;
+        right: max(12px, env(safe-area-inset-right));
+        top: max(58px, calc(env(safe-area-inset-top) + 48px));
+        transform: none;
+        width: min(340px, calc(100vw - 24px));
+        max-height: calc(100dvh - 70px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        overflow-y: auto;
+        padding: 18px 16px 14px;
+        border-radius: 18px;
+    }
+
+    .fortune-title {
+        padding: 0 28px 0 0;
+        font-size: 18px;
+        line-height: 1.3;
+    }
+
+    .fortune-poem {
+        margin-bottom: 10px;
+        padding: 10px;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .fortune-meaning,
+    .fortune-advice {
+        font-size: 12px;
+        line-height: 1.45;
+    }
 }
 
 @media (pointer: coarse) {

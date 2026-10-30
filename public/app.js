@@ -3023,7 +3023,8 @@
     function toggleRosaryModal() {
         const modal = document.getElementById('rosary-modal');
         const isHidden = modal.style.display === 'none' || modal.style.display === '';
-        modal.style.display = isHidden ? 'block' : 'none';
+        const compactMobile = window.matchMedia('(pointer: coarse) and (orientation: landscape)').matches;
+        modal.style.display = isHidden ? (compactMobile ? 'grid' : 'block') : 'none';
 
         STATE.isHoldingRosary = isHidden;
         if (localPlayer) {
