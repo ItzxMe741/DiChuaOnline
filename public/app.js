@@ -45,6 +45,10 @@
     };
 
     let ws = null;
+    let ablyClient = null;
+    let ablyChannel = null;
+    let ablyPlayerId = null;
+    let realtimeFallbackNotified = false;
     let isLeavingPage = false;
     let scene, camera, renderer;
     let localPlayer = null;
@@ -126,6 +130,7 @@
         window.addEventListener('pagehide', () => {
             isLeavingPage = true;
             if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, 'Leaving temple');
+            if (ablyClient) ablyClient.close();
         });
         window.addEventListener('pageshow', (event) => {
             if (!event.persisted || !isLeavingPage) return;
@@ -3484,6 +3489,7 @@
                 if (data.incense) data.incense.forEach(inc => createIncenseStick(inc.x, inc.y, inc.z, inc.id));
                 if (data.chatHistory) data.chatHistory.forEach(msg => appendChatMessage(msg));
                 updateOnlineCount();
+                connectAblyRealtime();
                 break;
 
             case 'player_joined':
@@ -3495,6 +3501,19 @@
             case 'player_moved':
                 // A client should never render its own server echo as a remote avatar.
                 if (data.id === STATE.playerId) break;
+                if (data.realtime && isAblyConnected() && data.source !== 'ably') break;
+                if (!remotePlayers.has(data.id) && data.name) {
+                    addOrUpdateRemotePlayer({
+                        id: data.id,
+                        name: data.name,
+                        robe: data.robe || 'blue',
+                        x: data.x,
+                        y: data.y,
+                        z: data.z,
+                        rotY: data.rotY
+                    });
+                    updateOnlineCount();
+                }
                 if (remotePlayers.has(data.id)) {
                     const rp = remotePlayers.get(data.id);
                     rp.targetPos.set(data.x, data.y, data.z);
@@ -3530,6 +3549,54 @@
                     }
                 }
                 break;
+        }
+    }
+
+    function isAblyConnected() {
+        return Boolean(ablyClient && ablyChannel && ablyClient.connection.state === 'connected');
+    }
+
+    async function connectAblyRealtime() {
+        if (!window.Ably || !STATE.playerId) return;
+        if (ablyClient && ablyPlayerId === STATE.playerId) return;
+        if (ablyClient) ablyClient.close();
+        ablyClient = null;
+        ablyChannel = null;
+        ablyPlayerId = null;
+
+        const clientId = STATE.playerId;
+        const client = new window.Ably.Realtime({
+            clientId,
+            authCallback: async (_tokenParams, callback) => {
+                try {
+                    const response = await fetch(`/realtime-token?client_id=${encodeURIComponent(clientId)}`, { cache: 'no-store' });
+                    if (!response.ok) throw new Error(`Realtime token request failed (${response.status})`);
+                    callback(null, await response.json());
+                } catch (error) {
+                    callback(error, null);
+                }
+            }
+        });
+
+        const channel = client.channels.get('chua-an-lac:default:game');
+        try {
+            await channel.subscribe('player_moved', (message) => {
+                const movement = message.data;
+                if (!movement || movement.id === STATE.playerId) return;
+                handleServerMessage({ type: 'player_moved', ...movement, realtime: true, source: 'ably' });
+            });
+            ablyClient = client;
+            ablyChannel = channel;
+            ablyPlayerId = clientId;
+            realtimeFallbackNotified = false;
+            showToast('Đã kết nối chuyển động trực tiếp.');
+        } catch (error) {
+            console.error('Không kết nối được kênh chuyển động trực tiếp:', error);
+            if (!realtimeFallbackNotified) {
+                showToast('Chưa kết nối được kênh realtime; đang dùng đường dự phòng.');
+                realtimeFallbackNotified = true;
+            }
+            client.close();
         }
     }
 
@@ -3687,6 +3754,8 @@
     // ==========================================
     let lastTime = performance.now();
     let moveSendTimer = 0;
+    let lastMovePacketAt = 0;
+    let lastMovePacket = null;
 
     function animate() {
         requestAnimationFrame(animate);
@@ -3804,14 +3873,35 @@
         moveSendTimer += delta;
         if (moveSendTimer >= 0.05 && ws && ws.readyState === WebSocket.OPEN) {
             moveSendTimer = 0;
-            ws.send(JSON.stringify({
-                type: 'move',
+            const movement = {
+                id: STATE.playerId,
+                name: STATE.playerName,
+                robe: STATE.robeColor,
                 x: localPlayer.group.position.x,
                 y: localPlayer.group.position.y,
                 z: localPlayer.group.position.z,
                 rotY: localPlayer.group.rotation.y,
                 action: STATE.currentAction
-            }));
+            };
+            const changed = !lastMovePacket ||
+                Math.hypot(movement.x - lastMovePacket.x, movement.y - lastMovePacket.y, movement.z - lastMovePacket.z) > 0.01 ||
+                Math.abs(movement.rotY - lastMovePacket.rotY) > 0.02 ||
+                movement.action !== lastMovePacket.action;
+            const heartbeatDue = performance.now() - lastMovePacketAt >= 1000;
+
+            if (changed || heartbeatDue) {
+                const realtime = isAblyConnected();
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'move', ...movement, realtime }));
+                }
+                if (realtime) {
+                    ablyChannel.publish('player_moved', movement).catch(error => {
+                        console.warn('Ably movement publish failed:', error);
+                    });
+                }
+                lastMovePacket = movement;
+                lastMovePacketAt = performance.now();
+            }
         }
     }
 

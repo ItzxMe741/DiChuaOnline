@@ -63,6 +63,8 @@ Game 3D trực tuyến tái hiện không gian Chùa truyền thống Việt Nam
 2. Vercel nhận diện FastAPI từ `server.py` và cài các gói trong `requirements.txt`.
 3. MP3 đã nằm tại `public/music/nhac-phat-tinh-tam.mp3`. File này được phục vụ như static asset; trình phát chỉ tải khi khách bấm nút nhạc.
 
-Để người chơi ở các Vercel instance khác nhau vẫn thấy nhau, hãy tạo một cơ sở dữ liệu Redis (ví dụ Upstash Redis), rồi thêm biến môi trường `REDIS_URL` trong Vercel Project → Settings → Environment Variables. Dùng URL kết nối Redis bảo mật (`rediss://...`), bật cho Production và Preview, sau đó redeploy. Server dùng Redis để chia sẻ vị trí, sự kiện nghi lễ, mõ/chuông, hương và chat trong cùng một khu `default`.
+Để chuyển động được gửi trực tiếp qua dịch vụ realtime, tạo một app Ably và API key có quyền `publish` và `subscribe`. Thêm biến môi trường `ABLY_API_KEY` trong Vercel Project → Settings → Environment Variables (Production và Preview), sau đó redeploy. Khóa chỉ nằm ở máy chủ; trình duyệt nhận token giới hạn cho kênh phòng chùa. Ably chuyển vị trí trực tiếp, còn WebSocket giữ vai trò dự phòng và xử lý chat/nghi lễ.
+
+Redis (`REDIS_URL`) vẫn dùng để chia sẻ danh sách người chơi và lưu lịch sử chat, hương, và trạng thái gần nhất khi người mới vào phòng. Nếu chưa cấu hình `ABLY_API_KEY`, game tự dùng WebSocket hiện tại làm đường dự phòng.
 
 Nếu chưa cấu hình `REDIS_URL`, game vẫn chạy local, nhưng người chơi trên các instance Vercel khác nhau sẽ không đồng bộ. Không đưa mật khẩu Redis vào GitHub.
