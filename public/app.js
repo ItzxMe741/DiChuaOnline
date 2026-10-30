@@ -3536,7 +3536,20 @@
         if (!pData || pData.id === STATE.playerId) return;
 
         if (remotePlayers.has(pData.id)) {
-            remotePlayers.get(pData.id).data = pData;
+            const existing = remotePlayers.get(pData.id);
+            const previousAvatar = existing.avatar;
+            if (existing.data.name !== pData.name || existing.data.robe !== pData.robe) {
+                const replacement = createChibiAvatarMesh(pData.name, pData.robe);
+                replacement.group.position.copy(previousAvatar.group.position);
+                replacement.group.rotation.copy(previousAvatar.group.rotation);
+                replacement.animTime = previousAvatar.animTime;
+                scene.remove(previousAvatar.group);
+                scene.add(replacement.group);
+                existing.avatar = replacement;
+            }
+            existing.data = pData;
+            existing.targetPos.set(pData.x, pData.y, pData.z);
+            existing.targetRotY = pData.rotY;
         } else {
             const avatar = createChibiAvatarMesh(pData.name, pData.robe);
             avatar.group.position.set(pData.x, pData.y, pData.z);

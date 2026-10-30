@@ -150,6 +150,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     player_id = str(uuid.uuid4())[:8]
     relay_task = None
+    joined = False
     
     player_data = {
         "id": player_id,
@@ -167,8 +168,6 @@ async def websocket_endpoint(websocket: WebSocket):
         if redis_client:
             relay_task = asyncio.create_task(forward_remote_events(websocket, player_id))
 
-        players[player_id] = {"ws": websocket, "data": player_data}
-        await save_shared_player(player_data)
         last_shared_save = time.monotonic()
         last_presence_cleanup = last_shared_save
 
@@ -184,12 +183,6 @@ async def websocket_endpoint(websocket: WebSocket):
             "chatHistory": shared_chat
         })
         
-        # Notify other players that a new devotee joined
-        await broadcast({
-            "type": "player_joined",
-            "player": player_data
-        }, exclude_id=player_id)
-        
         # Listen for messages
         while True:
             raw_data = await websocket.receive_text()
@@ -204,11 +197,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 player_data["z"] = float(msg.get("z", player_data["z"]))
                 player_data["rotY"] = float(msg.get("rotY", player_data["rotY"]))
                 await save_shared_player(player_data)
+                players[player_id] = {"ws": websocket, "data": player_data}
+                is_first_join = not joined
+                joined = True
                 last_shared_save = time.monotonic()
                 await broadcast({
-                    "type": "player_updated",
+                    "type": "player_joined" if is_first_join else "player_updated",
                     "player": player_data
-                })
+                }, exclude_id=player_id)
+
+                if not is_first_join:
+                    continue
                 
                 # System announcement in chat
                 sys_msg = {
@@ -221,6 +220,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await broadcast({"type": "chat_message", "message": sys_msg})
 
             elif msg_type == "move":
+                if not joined:
+                    continue
                 player_data["x"] = float(msg.get("x", 0))
                 player_data["y"] = float(msg.get("y", 0))
                 player_data["z"] = float(msg.get("z", 0))
@@ -299,7 +300,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"Error handling player {player_id}: {e}")
     finally:
-        if player_id in players:
+        if joined and player_id in players:
             name = players[player_id]["data"]["name"]
             del players[player_id]
             if redis_client:
