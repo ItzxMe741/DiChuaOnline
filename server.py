@@ -5,6 +5,7 @@ import uuid
 import os
 import time
 from contextlib import suppress
+from pathlib import Path
 
 if sys.platform == "win32":
     try:
@@ -15,10 +16,11 @@ if sys.platform == "win32":
 from typing import Dict
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from redis.asyncio import Redis
 
 app = FastAPI(title="Chùa An Lạc 3D - Đi Chùa Online")
+PUBLIC_DIR = Path(__file__).resolve().parent / "public"
 
 REDIS_URL = os.getenv("REDIS_URL")
 redis_client = Redis.from_url(REDIS_URL, decode_responses=True) if REDIS_URL else None
@@ -105,7 +107,10 @@ async def remember_chat_message(message: dict):
 
 @app.get("/")
 async def get_index():
-    return FileResponse("public/index.html")
+    index_file = PUBLIC_DIR / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
+    return RedirectResponse("/index.html", status_code=307)
 
 
 @app.get("/health")
@@ -317,8 +322,9 @@ async def broadcast(message: dict, exclude_id: str = None):
         except Exception as error:
             print(f"Error broadcasting shared event: {error}")
 
-# Mount static folder
-app.mount("/static", StaticFiles(directory="public"), name="static")
+# Vercel serves public/ directly from its CDN; mount it only for local development.
+if PUBLIC_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="public")
 
 if __name__ == "__main__":
     import uvicorn

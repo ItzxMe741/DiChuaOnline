@@ -880,7 +880,7 @@
         altarGroup.add(lotusGroup);
 
         // 4. TUONG PHAT - DUNG ANH BUDDHA.JPG CUTOUT CHINH XAC
-        ProceduralTextures.loadBuddhaCutoutTexture('/static/buddha.jpg', (cutoutTex, aspect) => {
+        ProceduralTextures.loadBuddhaCutoutTexture('/buddha.jpg', (cutoutTex, aspect) => {
             const statueHeight = 4.4;
             const statueWidth = statueHeight * aspect;
             const statueGeo = new THREE.PlaneGeometry(statueWidth, statueHeight);
