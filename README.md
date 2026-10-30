@@ -63,4 +63,6 @@ Game 3D trực tuyến tái hiện không gian Chùa truyền thống Việt Nam
 2. Vercel nhận diện FastAPI từ `server.py` và cài các gói trong `requirements.txt`.
 3. MP3 đã nằm tại `public/music/nhac-phat-tinh-tam.mp3`. File này được phục vụ như static asset; trình phát chỉ tải khi khách bấm nút nhạc.
 
-Vercel hiện hỗ trợ WebSocket, nhưng dữ liệu người chơi/chat trong `server.py` đang lưu trong RAM của từng instance. Muốn multiplayer ổn định khi Vercel tạo nhiều instance, cần thêm kho dữ liệu chia sẻ như Redis.
+Để người chơi ở các Vercel instance khác nhau vẫn thấy nhau, hãy tạo một cơ sở dữ liệu Redis (ví dụ Upstash Redis), rồi thêm biến môi trường `REDIS_URL` trong Vercel Project → Settings → Environment Variables. Dùng URL kết nối Redis bảo mật (`rediss://...`), bật cho Production và Preview, sau đó redeploy. Server dùng Redis để chia sẻ vị trí, sự kiện nghi lễ, mõ/chuông, hương và chat trong cùng một khu `default`.
+
+Nếu chưa cấu hình `REDIS_URL`, game vẫn chạy local, nhưng người chơi trên các instance Vercel khác nhau sẽ không đồng bộ. Không đưa mật khẩu Redis vào GitHub.

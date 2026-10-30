@@ -3271,6 +3271,58 @@
     }
 
     function setupUIEventListeners() {
+        const fullscreenBtn = document.getElementById('btn-fullscreen');
+        const isFullscreen = () => Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+        const updateFullscreenButton = () => {
+            const active = isFullscreen();
+            fullscreenBtn.textContent = active ? '⤢' : '⛶';
+            fullscreenBtn.setAttribute('aria-pressed', String(active));
+            fullscreenBtn.setAttribute('aria-label', active ? 'Thoát toàn màn hình' : 'Bật toàn màn hình');
+            fullscreenBtn.title = active ? 'Thoát toàn màn hình' : 'Bật toàn màn hình';
+        };
+
+        fullscreenBtn.addEventListener('click', () => {
+            let request;
+            let supported = true;
+            try {
+                if (isFullscreen()) {
+                    if (document.exitFullscreen) request = document.exitFullscreen();
+                    else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                        request = Promise.resolve();
+                    } else supported = false;
+                } else {
+                    const root = document.documentElement;
+                    if (root.requestFullscreen) request = root.requestFullscreen();
+                    else if (root.webkitRequestFullscreen) {
+                        root.webkitRequestFullscreen();
+                        request = Promise.resolve();
+                    } else supported = false;
+                }
+            } catch (error) {
+                request = Promise.reject(error);
+            }
+
+            if (!supported) {
+                showToast('Trình duyệt này chưa hỗ trợ toàn màn hình cho trang web.');
+                return;
+            }
+            Promise.resolve(request).then(updateFullscreenButton).catch(() => {
+                showToast('Không thể bật toàn màn hình trong trình duyệt này.');
+            });
+        });
+        document.addEventListener('fullscreenchange', updateFullscreenButton);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+
+        const chatToggle = document.getElementById('btn-chat-toggle');
+        chatToggle.addEventListener('click', () => {
+            const isOpen = document.body.classList.toggle('mobile-chat-open');
+            chatToggle.setAttribute('aria-expanded', String(isOpen));
+            chatToggle.setAttribute('aria-label', isOpen ? 'Đóng trò chuyện' : 'Mở trò chuyện');
+            chatToggle.title = isOpen ? 'Đóng trò chuyện' : 'Mở trò chuyện';
+            if (isOpen) chatToggle.classList.remove('has-unread');
+        });
+
         document.getElementById('btn-pray').addEventListener('click', performPrayAction);
         document.getElementById('btn-incense').addEventListener('click', performIncenseAction);
         document.getElementById('btn-rosary').addEventListener('click', toggleRosaryModal);
@@ -3322,6 +3374,10 @@
         });
 
         document.getElementById('btn-help').addEventListener('click', () => {
+            if (window.matchMedia('(pointer: coarse)').matches) {
+                showToast('Joystick bên trái để di chuyển • Kéo cảnh để xoay • Vuốt thanh dưới để chọn nghi lễ.');
+                return;
+            }
             const help = document.getElementById('help-card');
             help.style.display = help.style.display === 'none' ? 'block' : 'none';
         });
@@ -3427,6 +3483,9 @@
 
             case 'chat_message':
                 appendChatMessage(data.message);
+                if (!document.body.classList.contains('mobile-chat-open')) {
+                    document.getElementById('btn-chat-toggle').classList.add('has-unread');
+                }
                 if (data.message.playerId) {
                     if (data.message.playerId === STATE.playerId && localPlayer) {
                         showChatBubble(localPlayer, data.message.text);
