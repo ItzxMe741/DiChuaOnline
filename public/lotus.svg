@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="petal" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#fff4c1"/>
+      <stop offset="1" stop-color="#d4a338"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="#35100b" stroke="#d4af37" stroke-width="2"/>
+  <path d="M32 48C18 45 17 31 32 12c15 19 14 33 0 36Z" fill="url(#petal)" stroke="#fff0b3" stroke-width="1.5"/>
+  <path d="M29 46C15 47 9 37 10 25c12 3 20 11 19 21ZM35 46c14 1 20-9 19-21-12 3-20 11-19 21Z" fill="#e8b94e" stroke="#fff0b3" stroke-width="1.5"/>
+  <path d="M23 48c-8 0-13-4-16-10 10-1 17 2 22 9Zm18 0c8 0 13-4 16-10-10-1-17 2-22 9Z" fill="#bd7e2b" stroke="#f5d987" stroke-width="1.5"/>
+  <path d="M19 53h26" stroke="#f5d987" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

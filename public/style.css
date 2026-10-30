@@ -1,0 +1,917 @@
+/* Giao diện Chùa An Lạc 3D - Thiết kế Tâm Linh Truyền Thống Việt Nam */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Playfair+Display:ital,wght@0,600;0,800;1,400&family=Quicksand:wght@500;600;700&display=swap');
+
+:root {
+    --gold: #f9d342;
+    --gold-glow: rgba(249, 211, 66, 0.4);
+    --gold-dark: #b8860b;
+    --temple-red: #8b1e0f;
+    --temple-dark: #2a0804;
+    --amber: #e67e22;
+    --lotus-pink: #ff758c;
+    --wood-dark: #2c1d11;
+    --text-light: #fff8e7;
+    --overlay-bg: rgba(20, 8, 6, 0.88);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body, html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #0d0705;
+    font-family: 'Quicksand', sans-serif;
+    color: var(--text-light);
+}
+
+#canvas-container {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+}
+
+#canvas-container canvas {
+    touch-action: none;
+}
+
+/* UI OVERLAY */
+#ui-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.interactive {
+    pointer-events: auto;
+}
+
+.mobile-joystick,
+.rotate-device-prompt {
+    display: none;
+}
+
+/* HEADER BAR */
+.temple-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: linear-gradient(180deg, rgba(20, 6, 4, 0.9) 0%, rgba(20, 6, 4, 0) 100%);
+}
+
+.temple-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.temple-logo {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    filter: drop-shadow(0 0 10px var(--gold));
+    animation: gentlePulse 3s infinite ease-in-out;
+}
+
+.temple-title h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    background: linear-gradient(45deg, #fff2a3, #e5a93b, #fff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 2px 10px rgba(229, 169, 59, 0.4);
+}
+
+.temple-title p {
+    font-size: 13px;
+    color: #e2cbb4;
+    font-style: italic;
+    letter-spacing: 0.5px;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-btn {
+    background: rgba(60, 20, 15, 0.7);
+    border: 1px solid var(--gold-dark);
+    color: var(--text-light);
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(5px);
+}
+
+.header-btn:hover {
+    background: var(--temple-red);
+    border-color: var(--gold);
+    box-shadow: 0 0 15px var(--gold-glow);
+    transform: translateY(-2px);
+}
+
+.music-toggle {
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+    padding: 0;
+    font-size: 20px;
+}
+
+@media (max-width: 600px) {
+    .music-toggle {
+        width: 36px;
+        height: 36px;
+    }
+}
+
+@media (pointer: coarse) and (orientation: portrait) {
+    .rotate-device-prompt {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 28px;
+        background: rgba(20, 8, 6, 0.96);
+        color: var(--text-light);
+        text-align: center;
+        pointer-events: none;
+    }
+
+    .rotate-device-prompt strong {
+        color: var(--gold);
+        font-size: clamp(20px, 6vw, 28px);
+    }
+
+    .rotate-device-prompt span {
+        max-width: 300px;
+        font-size: 15px;
+        line-height: 1.5;
+    }
+
+    .rotate-device-icon {
+        color: var(--gold);
+        font-size: 58px;
+        line-height: 1;
+    }
+}
+
+@media (pointer: coarse) and (orientation: landscape) {
+    .mobile-joystick {
+        position: fixed;
+        z-index: 30;
+        left: max(18px, env(safe-area-inset-left));
+        bottom: max(18px, env(safe-area-inset-bottom));
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        color: rgba(255, 244, 220, 0.75);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    .joystick-base {
+        width: 100px;
+        height: 100px;
+        display: grid;
+        place-items: center;
+        border: 2px solid rgba(249, 211, 66, 0.48);
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(90, 54, 34, 0.72), rgba(25, 8, 6, 0.72));
+        box-shadow: 0 5px 18px rgba(0, 0, 0, 0.45), inset 0 0 16px rgba(249, 211, 66, 0.12);
+        touch-action: none;
+    }
+
+    .joystick-thumb {
+        width: 42px;
+        height: 42px;
+        border: 2px solid rgba(255, 236, 177, 0.9);
+        border-radius: 50%;
+        background: linear-gradient(145deg, #bf8d3f, #68401e);
+        box-shadow: 0 3px 9px rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+    }
+
+    .temple-header {
+        padding: 8px 14px;
+    }
+
+    .temple-logo {
+        width: 32px;
+        height: 32px;
+        flex-basis: 32px;
+    }
+
+    .temple-title h1 {
+        font-size: 17px;
+    }
+
+    .temple-title p {
+        display: none;
+    }
+
+    .header-controls {
+        gap: 6px;
+    }
+
+    .header-btn {
+        padding: 6px 9px;
+        font-size: 11px;
+    }
+
+    .online-badge {
+        padding: 5px 8px;
+        font-size: 10px;
+    }
+
+    .nav-hints {
+        display: none;
+    }
+
+    .chat-container {
+        left: max(14px, env(safe-area-inset-left));
+        bottom: max(124px, calc(env(safe-area-inset-bottom) + 116px));
+        width: min(250px, 38vw);
+    }
+
+    .chat-messages {
+        height: 48px;
+        font-size: 11px;
+    }
+
+    .rituals-bar {
+        bottom: max(12px, env(safe-area-inset-bottom));
+        left: 50%;
+        max-width: 69vw;
+        gap: 4px;
+        padding: 5px 8px;
+    }
+
+    .ritual-btn {
+        min-width: 58px;
+        padding: 5px 7px;
+        border-radius: 13px;
+    }
+
+    .ritual-btn .icon {
+        font-size: 19px;
+    }
+
+    .ritual-btn .icon img {
+        width: 22px;
+        height: 22px;
+    }
+
+    .ritual-btn .label {
+        font-size: 10px;
+    }
+
+    .ritual-btn .key-hint {
+        display: none;
+    }
+
+    .modal-card {
+        max-height: calc(100dvh - 16px);
+        overflow-y: auto;
+        padding: 16px 22px;
+    }
+
+    .modal-card h2 {
+        font-size: 20px;
+    }
+
+    .modal-card p.subtitle {
+        margin-bottom: 12px;
+    }
+}
+
+.online-badge {
+    background: rgba(30, 80, 40, 0.7);
+    border: 1px solid #4ade80;
+    color: #bbf7d0;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.online-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+    animation: blink 1.5s infinite;
+}
+
+/* RITUAL ACTIONS BAR (BOTTOM CENTER) */
+.rituals-bar {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    background: rgba(25, 8, 6, 0.88);
+    padding: 8px 14px;
+    border-radius: 35px;
+    border: 1.5px solid rgba(218, 165, 32, 0.6);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7), 0 0 20px rgba(249, 211, 66, 0.15);
+    backdrop-filter: blur(8px);
+    max-width: 95vw;
+    overflow-x: auto;
+}
+
+.ritual-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: linear-gradient(180deg, rgba(65, 20, 15, 0.8) 0%, rgba(40, 10, 8, 0.9) 100%);
+    border: 1px solid rgba(249, 211, 66, 0.4);
+    color: var(--text-light);
+    padding: 8px 12px;
+    border-radius: 18px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    min-width: 74px;
+}
+
+.ritual-btn .icon {
+    font-size: 24px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+.ritual-btn .icon img {
+    display: block;
+    width: 28px;
+    height: 28px;
+}
+
+.ritual-btn .label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #fef0cd;
+    white-space: nowrap;
+}
+
+.ritual-btn .key-hint {
+    font-size: 10px;
+    background: rgba(249, 211, 66, 0.2);
+    color: var(--gold);
+    padding: 1px 6px;
+    border-radius: 8px;
+    border: 0.5px solid var(--gold);
+}
+
+.ritual-btn:hover {
+    background: linear-gradient(180deg, #a72816 0%, #68150a 100%);
+    border-color: var(--gold);
+    transform: translateY(-6px) scale(1.05);
+    box-shadow: 0 8px 20px var(--gold-glow);
+}
+
+.ritual-btn:active {
+    transform: translateY(-2px) scale(0.98);
+}
+
+/* CHAT BOX (BOTTOM LEFT) */
+.chat-container {
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    width: 330px;
+    background: rgba(18, 6, 5, 0.85);
+    border: 1px solid rgba(218, 165, 32, 0.4);
+    border-radius: 14px;
+    overflow: hidden;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-header {
+    background: rgba(50, 15, 12, 0.9);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gold);
+    border-bottom: 1px solid rgba(218, 165, 32, 0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-messages {
+    height: 160px;
+    overflow-y: auto;
+    padding: 10px;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scroll-behavior: smooth;
+}
+
+.chat-messages::-webkit-scrollbar {
+    width: 4px;
+}
+.chat-messages::-webkit-scrollbar-thumb {
+    background: var(--gold-dark);
+    border-radius: 4px;
+}
+
+.chat-msg {
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.chat-msg .author {
+    font-weight: 700;
+    color: var(--gold);
+}
+
+.chat-msg.system {
+    color: #e5b974;
+    font-style: italic;
+    background: rgba(249, 211, 66, 0.08);
+    padding: 4px 8px;
+    border-radius: 6px;
+    border-left: 2px solid var(--gold);
+}
+
+.chat-input-row {
+    display: flex;
+    border-top: 1px solid rgba(218, 165, 32, 0.2);
+    padding: 6px;
+    background: rgba(28, 10, 8, 0.95);
+}
+
+.chat-input-row input {
+    flex: 1;
+    background: rgba(10, 4, 3, 0.6);
+    border: 1px solid rgba(218, 165, 32, 0.3);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+}
+
+.chat-input-row input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 8px var(--gold-glow);
+}
+
+.chat-input-row button {
+    background: var(--temple-red);
+    border: 1px solid var(--gold);
+    color: #fff;
+    font-weight: 700;
+    padding: 0 14px;
+    margin-left: 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.chat-input-row button:hover {
+    background: #a92615;
+    box-shadow: 0 0 10px var(--gold-glow);
+}
+
+/* NAVIGATION HINTS (TOP RIGHT) */
+.nav-hints {
+    position: absolute;
+    top: 75px;
+    right: 24px;
+    background: rgba(20, 7, 5, 0.8);
+    border: 1px solid rgba(218, 165, 32, 0.35);
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #edd8c5;
+    backdrop-filter: blur(6px);
+    line-height: 1.7;
+}
+
+.nav-hints .badge {
+    background: rgba(249, 211, 66, 0.25);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-weight: bold;
+    border: 0.5px solid var(--gold);
+}
+
+/* MODALS */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(8, 3, 2, 0.85);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    pointer-events: auto;
+    transition: opacity 0.3s ease;
+}
+
+.modal-card {
+    background: linear-gradient(135deg, #2b0b07 0%, #170503 100%);
+    border: 2px solid var(--gold);
+    border-radius: 20px;
+    padding: 32px 36px;
+    width: 90%;
+    max-width: 480px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 30px var(--gold-glow);
+    text-align: center;
+    position: relative;
+    animation: modalAppear 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.modal-card h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 26px;
+    color: var(--gold);
+    margin-bottom: 8px;
+    text-shadow: 0 2px 12px var(--gold-glow);
+}
+
+.modal-card p.subtitle {
+    font-size: 14px;
+    color: #e2cbb4;
+    margin-bottom: 24px;
+    font-style: italic;
+}
+
+.form-group {
+    text-align: left;
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 8px;
+}
+
+.form-group input {
+    width: 100%;
+    background: rgba(15, 5, 4, 0.7);
+    border: 1.5px solid rgba(218, 165, 32, 0.5);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 15px;
+    outline: none;
+    transition: 0.3s;
+}
+
+.form-group input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 15px var(--gold-glow);
+}
+
+.robe-selector {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 8px;
+}
+
+.robe-option {
+    flex: 1;
+    background: rgba(35, 12, 9, 0.7);
+    border: 2px solid transparent;
+    border-radius: 12px;
+    padding: 10px 8px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.robe-preview {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+
+.robe-option.selected {
+    border-color: var(--gold);
+    background: rgba(139, 30, 15, 0.5);
+    box-shadow: 0 0 15px var(--gold-glow);
+    transform: scale(1.05);
+}
+
+.robe-option span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #f7e6d2;
+}
+
+.btn-primary {
+    width: 100%;
+    background: linear-gradient(180deg, #c7321e 0%, #87190b 100%);
+    border: 1.5px solid var(--gold);
+    color: #fff;
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 14px 24px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 24px rgba(135, 25, 11, 0.6);
+    margin-top: 10px;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(180deg, #e63920 0%, #a32010 100%);
+    box-shadow: 0 10px 30px var(--gold-glow);
+    transform: translateY(-2px);
+}
+
+/* MODAL CHUỖI HẠT NIỆM PHẬT (PRAYER BEADS HUD) */
+.rosary-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, rgba(32, 10, 7, 0.95) 0%, rgba(16, 5, 3, 0.97) 100%);
+    border: 2px solid var(--gold);
+    border-radius: 24px;
+    padding: 28px 36px;
+    width: 90%;
+    max-width: 440px;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.9), 0 0 35px var(--gold-glow);
+    z-index: 110;
+    text-align: center;
+    backdrop-filter: blur(12px);
+    display: none;
+}
+
+.close-modal-btn {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    background: none;
+    border: none;
+    color: #c99;
+    font-size: 24px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+.close-modal-btn:hover {
+    color: var(--gold);
+}
+
+.rosary-ring-container {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    margin: 12px auto;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+.rosary-ring-container:active {
+    cursor: grabbing;
+}
+
+#rosary-canvas {
+    width: 280px;
+    height: 280px;
+    display: block;
+}
+
+.rosary-center-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+}
+
+.bead-counter-num {
+    font-family: 'Cinzel', serif;
+    font-size: 38px;
+    font-weight: 800;
+    color: var(--gold);
+    text-shadow: 0 0 15px var(--gold-glow);
+    line-height: 1.1;
+}
+
+.bead-counter-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e2cbb4;
+}
+
+.rosary-hint {
+    font-size: 12px;
+    color: #e5c9a8;
+    background: rgba(249, 211, 66, 0.12);
+    border: 1px dashed rgba(249, 211, 66, 0.4);
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-top: 10px;
+    line-height: 1.4;
+}
+
+.mantra-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff4d1;
+    margin: 12px 0 18px;
+    min-height: 28px;
+    letter-spacing: 0.8px;
+}
+
+.btn-chant {
+    background: linear-gradient(180deg, #d49a2a 0%, #996515 100%);
+    border: 1px solid #fff;
+    color: #1a0805;
+    font-weight: 800;
+    font-size: 16px;
+    padding: 12px 28px;
+    border-radius: 30px;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(212, 154, 42, 0.5);
+    transition: all 0.2s;
+}
+
+.btn-chant:hover {
+    transform: scale(1.06);
+    box-shadow: 0 6px 25px var(--gold-glow);
+}
+.btn-chant:active {
+    transform: scale(0.96);
+}
+
+/* MODAL XIN XĂM */
+.fortune-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, rgba(35, 12, 8, 0.96) 0%, rgba(18, 5, 4, 0.98) 100%);
+    border: 2px solid var(--gold);
+    border-radius: 20px;
+    padding: 28px 32px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.9), 0 0 40px var(--gold-glow);
+    z-index: 110;
+    text-align: center;
+    backdrop-filter: blur(12px);
+    display: none;
+}
+
+.fortune-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    color: var(--gold);
+    margin-bottom: 12px;
+}
+
+.fortune-poem {
+    background: rgba(10, 3, 2, 0.6);
+    border: 1px dashed var(--gold-dark);
+    border-radius: 12px;
+    padding: 16px;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 15px;
+    line-height: 1.8;
+    color: #fff6d9;
+    white-space: pre-line;
+    margin-bottom: 16px;
+}
+
+.fortune-meaning {
+    text-align: left;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #e5d1bd;
+    margin-bottom: 12px;
+}
+
+.fortune-advice {
+    text-align: left;
+    font-size: 13px;
+    color: var(--gold);
+    background: rgba(249, 211, 66, 0.1);
+    padding: 8px 12px;
+    border-radius: 8px;
+    border-left: 3px solid var(--gold);
+}
+
+/* ANIMATIONS */
+@keyframes modalAppear {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes gentlePulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px var(--gold)); }
+    50% { transform: scale(1.1); filter: drop-shadow(0 0 16px var(--gold)); }
+}
+
+@keyframes rotateGentle {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* NOTIFICATION TOAST */
+.temple-toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(28, 10, 8, 0.95);
+    border: 1px solid var(--gold);
+    color: #fff;
+    padding: 10px 24px;
+    border-radius: 30px;
+    font-weight: 700;
+    font-size: 14px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 15px var(--gold-glow);
+    z-index: 120;
+    pointer-events: none;
+    animation: toastIn 0.3s ease;
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translate(-50%, -20px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+}
