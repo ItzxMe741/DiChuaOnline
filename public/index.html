@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chùa An Lạc 3D - Đi Chùa Online & Chiêm Bái Lễ Phật</title>
-    <link rel="stylesheet" href="/style.css?v=ritual-mobile-2">
+    <link rel="stylesheet" href="/style.css?v=room-sharing-1">
     <link rel="icon" type="image/svg+xml" href="/lotus.svg?v=2">
 </head>
 <body>
@@ -30,6 +30,7 @@
                     <span id="online-count">1 Phật tử viếng chùa</span>
                 </div>
                 <button id="btn-chat-toggle" class="header-btn chat-toggle-btn" type="button" title="Mở trò chuyện" aria-label="Mở trò chuyện" aria-expanded="false">💬</button>
+                <button id="btn-room-share" class="header-btn room-share-btn" type="button" title="Sao chép link phòng">🏠 <span id="room-label">Phòng</span></button>
                 <button id="btn-music" class="header-btn music-toggle" type="button" title="Bật nhạc nền" aria-label="Bật nhạc nền" aria-pressed="false">
                     <span id="music-icon" aria-hidden="true">🔇</span>
                 </button>
@@ -133,6 +134,12 @@
             </div>
 
             <div class="form-group">
+                <label for="room-code">Mã phòng (để trống để tạo phòng mới):</label>
+                <input type="text" id="room-code" placeholder="Ví dụ: ANLAC-123" maxlength="24" autocomplete="off" autocapitalize="characters">
+                <small id="room-hint">Gửi link phòng cho bạn bè để cùng vào.</small>
+            </div>
+
+            <div class="form-group">
                 <label>Chọn Y Phục Phật Tử:</label>
                 <div class="robe-selector">
                     <div class="robe-option selected" data-robe="blue">
@@ -191,6 +198,6 @@
     <script src="/textures.js"></script>
     <script src="/audio.js"></script>
     <script src="/fortune.js"></script>
-    <script src="/app.js?v=cloudflare-realtime-1"></script>
+    <script src="/app.js?v=room-sharing-1"></script>
 </body>
 </html>

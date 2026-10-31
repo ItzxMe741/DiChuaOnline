@@ -69,6 +69,10 @@ Máy chủ phòng Cloudflare nằm trong thư mục `cloudflare/`. Từ terminal
 
 Trong Vercel Project → Settings → Environment Variables, thêm `CLOUDFLARE_REALTIME_URL` với địa chỉ Worker kết thúc bằng `/ws` (ví dụ `https://di-chua-online-realtime.<your-subdomain>.workers.dev/ws`), bật cho Production và Preview, rồi redeploy. Vercel tiếp tục phục vụ game, chat và nghi lễ; Durable Object trên Cloudflare giữ WebSocket của phòng và chuyển vị trí trực tiếp.
 
+### Mời bạn bè vào cùng phòng
+
+Ở màn hình vào chùa, nhập một mã phòng giống nhau để tham gia phòng đã tạo, hoặc để trống để tạo mã mới. Sau khi vào, nhấn nút 🏠 cạnh thanh trên cùng để sao chép link mời; người nhận link sẽ vào cùng phòng. Mã phòng phân tách người chơi, chat, nhang và sự kiện giữa các phòng.
+
 Redis (`REDIS_URL`) vẫn dùng để chia sẻ danh sách và lưu lịch sử chat, hương, cùng vị trí gần nhất. Nếu chưa cấu hình `CLOUDFLARE_REALTIME_URL`, game dùng WebSocket dự phòng.
 
 Nếu chưa cấu hình `REDIS_URL`, chuyển động và danh sách người trong Cloudflare vẫn hoạt động; lịch sử chat, hương và các sự kiện khác chưa được chia sẻ giữa các instance Vercel. Không đưa mật khẩu Redis vào GitHub.

@@ -14,6 +14,7 @@
     // ==========================================
     const STATE = {
         playerId: null,
+        roomCode: '',
         playerName: 'Chú Tiểu An An',
         robeColor: 'blue',
         connected: false,
@@ -154,6 +155,9 @@
         const nameInput = document.getElementById('player-name');
         const robeOptions = document.querySelectorAll('.robe-option');
         const enterBtn = document.getElementById('btn-enter-temple');
+        const roomInput = document.getElementById('room-code');
+        const requestedRoom = new URLSearchParams(window.location.search).get('room') || '';
+        roomInput.value = requestedRoom.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24).toUpperCase();
 
         if (nameInput.value === 'Phật tử Tâm An') {
             nameInput.value = 'Chú Tiểu Thích An Nhiên';
@@ -170,6 +174,14 @@
         enterBtn.addEventListener('click', () => {
             const name = nameInput.value.trim();
             if (name) STATE.playerName = name;
+            const enteredRoom = roomInput.value.trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24).toUpperCase();
+            STATE.roomCode = enteredRoom || `ANLAC-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+            roomInput.value = STATE.roomCode;
+            const pageUrl = new URL(window.location.href);
+            pageUrl.searchParams.set('room', STATE.roomCode);
+            window.history.replaceState({}, '', pageUrl);
+            const roomLabel = document.getElementById('room-label');
+            if (roomLabel) roomLabel.textContent = STATE.roomCode;
             // Start just inside the front gate so the player's own avatar is
             // clearly visible in the first camera view.
             STATE.camera.theta = Math.PI;
@@ -3354,6 +3366,17 @@
             if (isOpen) chatToggle.classList.remove('has-unread');
         });
 
+        document.getElementById('btn-room-share').addEventListener('click', async () => {
+            const shareUrl = new URL(window.location.href);
+            shareUrl.searchParams.set('room', STATE.roomCode || '');
+            try {
+                await navigator.clipboard.writeText(shareUrl.toString());
+                showToast(`Đã sao chép link phòng ${STATE.roomCode}. Gửi link này cho bạn bè nhé.`);
+            } catch {
+                window.prompt('Sao chép link phòng này để mời bạn bè:', shareUrl.toString());
+            }
+        });
+
         document.getElementById('btn-pray').addEventListener('click', performPrayAction);
         document.getElementById('btn-incense').addEventListener('click', performIncenseAction);
         document.getElementById('btn-rosary').addEventListener('click', toggleRosaryModal);
@@ -3446,9 +3469,10 @@
     // ==========================================
     function connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        const wsUrl = new URL(`${protocol}//${window.location.host}/ws`);
+        wsUrl.searchParams.set('room', STATE.roomCode || 'default');
 
-        ws = new WebSocket(wsUrl);
+        ws = new WebSocket(wsUrl.toString());
 
         ws.onopen = () => {
             STATE.connected = true;
@@ -3577,7 +3601,7 @@
             const endpoint = new URL(config.websocketUrl);
             endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : endpoint.protocol === 'http:' ? 'ws:' : endpoint.protocol;
             if (!endpoint.pathname || endpoint.pathname === '/') endpoint.pathname = '/ws';
-            endpoint.searchParams.set('room', 'default');
+            endpoint.searchParams.set('room', STATE.roomCode || 'default');
             endpoint.searchParams.set('id', STATE.playerId);
             endpoint.searchParams.set('name', STATE.playerName);
             endpoint.searchParams.set('robe', STATE.robeColor);

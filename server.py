@@ -6,6 +6,7 @@ import os
 import time
 from contextlib import suppress
 from pathlib import Path
+from contextvars import ContextVar
 
 if sys.platform == "win32":
     try:
@@ -26,12 +27,10 @@ REDIS_URL = os.getenv("REDIS_URL")
 redis_client = Redis.from_url(REDIS_URL, decode_responses=True) if REDIS_URL else None
 CLOUDFLARE_REALTIME_URL = os.getenv("CLOUDFLARE_REALTIME_URL", "").strip()
 INSTANCE_ID = str(uuid.uuid4())
-ROOM_PREFIX = "chua-an-lac:default"
-PLAYERS_KEY = f"{ROOM_PREFIX}:players"
-ACTIVE_PLAYERS_KEY = f"{ROOM_PREFIX}:active"
-INCENSE_KEY = f"{ROOM_PREFIX}:incense"
-CHAT_KEY = f"{ROOM_PREFIX}:chat"
-EVENTS_CHANNEL = f"{ROOM_PREFIX}:events"
+CURRENT_ROOM = ContextVar("current_room", default="default")
+
+def room_key(suffix: str) -> str:
+    return f"chua-an-lac:{CURRENT_ROOM.get()}:{suffix}"
 PRESENCE_TIMEOUT_SECONDS = 45
 
 # Store connected players
@@ -39,18 +38,18 @@ PRESENCE_TIMEOUT_SECONDS = 45
 players: Dict[str, dict] = {}
 
 # Active incense sticks placed in the temple { id: { "urnId": str, "x", "y", "z", "playerName", "timestamp" } }
-incense_list = []
+incense_lists = {}
 
 # Chat history (last 50 messages)
-chat_history = []
+chat_histories = {}
 
 
 async def save_shared_player(player_data: dict):
     if not redis_client:
         return False
     player_id = player_data["id"]
-    created = await redis_client.hset(PLAYERS_KEY, player_id, json.dumps(player_data))
-    await redis_client.zadd(ACTIVE_PLAYERS_KEY, {player_id: time.time()})
+    created = await redis_client.hset(room_key("players"), player_id, json.dumps(player_data))
+    await redis_client.zadd(room_key("active"), {player_id: time.time()})
     return bool(created)
 
 
@@ -58,12 +57,12 @@ async def prune_stale_players():
     if not redis_client:
         return []
     cutoff = time.time() - PRESENCE_TIMEOUT_SECONDS
-    stale_ids = await redis_client.zrangebyscore(ACTIVE_PLAYERS_KEY, "-inf", cutoff)
+    stale_ids = await redis_client.zrangebyscore(room_key("active"), "-inf", cutoff)
     if not stale_ids:
         return []
 
-    await redis_client.zrem(ACTIVE_PLAYERS_KEY, *stale_ids)
-    await redis_client.hdel(PLAYERS_KEY, *stale_ids)
+    await redis_client.zrem(room_key("active"), *stale_ids)
+    await redis_client.hdel(room_key("players"), *stale_ids)
     for stale_id in stale_ids:
         await broadcast({"type": "player_left", "id": stale_id})
     return stale_ids
@@ -71,13 +70,13 @@ async def prune_stale_players():
 
 async def load_shared_players(exclude_id: str = None):
     if not redis_client:
-        return [p["data"] for p in players.values() if p["data"]["id"] != exclude_id]
+        return [p["data"] for p in players.values() if p.get("room") == CURRENT_ROOM.get() and p["data"]["id"] != exclude_id]
 
     await prune_stale_players()
     cutoff = time.time() - PRESENCE_TIMEOUT_SECONDS
 
-    active_ids = await redis_client.zrangebyscore(ACTIVE_PLAYERS_KEY, cutoff, "+inf")
-    stored_players = await redis_client.hgetall(PLAYERS_KEY)
+    active_ids = await redis_client.zrangebyscore(room_key("active"), cutoff, "+inf")
+    stored_players = await redis_client.hgetall(room_key("players"))
     return [
         json.loads(stored_players[player_id])
         for player_id in active_ids
@@ -102,7 +101,7 @@ async def forward_remote_events(websocket: WebSocket, player_id: str):
     while True:
         pubsub = redis_client.pubsub()
         try:
-            await pubsub.subscribe(EVENTS_CHANNEL)
+            await pubsub.subscribe(room_key("events"))
             async for event in pubsub.listen():
                 if event.get("type") != "message":
                     continue
@@ -116,16 +115,17 @@ async def forward_remote_events(websocket: WebSocket, player_id: str):
             print(f"Error forwarding shared events to {player_id}: {error}")
         finally:
             with suppress(Exception):
-                await pubsub.unsubscribe(EVENTS_CHANNEL)
+                await pubsub.unsubscribe(room_key("events"))
                 await pubsub.aclose()
         await asyncio.sleep(1)
 
 
 async def remember_chat_message(message: dict):
-    chat_history.append(message)
-    if len(chat_history) > 100:
-        del chat_history[:-100]
-    await save_shared_item(CHAT_KEY, message, 100)
+    history = chat_histories.setdefault(CURRENT_ROOM.get(), [])
+    history.append(message)
+    if len(history) > 100:
+        del history[:-100]
+    await save_shared_item(room_key("chat"), message, 100)
 
 @app.get("/")
 async def get_index():
@@ -153,6 +153,11 @@ async def realtime_config():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    requested_room = websocket.query_params.get("room", "default").strip()
+    if not requested_room or len(requested_room) > 24 or not all(ch.isalnum() or ch in "-_" for ch in requested_room):
+        await websocket.close(code=1008, reason="Invalid room code")
+        return
+    room_token = CURRENT_ROOM.set(requested_room.upper())
     await websocket.accept()
     player_id = str(uuid.uuid4())[:8]
     relay_task = None
@@ -179,8 +184,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Load one shared room snapshot so visitors on different Vercel instances meet.
         all_players_data = await load_shared_players(exclude_id=player_id)
-        shared_incense = await load_shared_list(INCENSE_KEY, -40, -1, incense_list)
-        shared_chat = await load_shared_list(CHAT_KEY, -30, -1, chat_history)
+        shared_incense = await load_shared_list(room_key("incense"), -40, -1, incense_lists.setdefault(CURRENT_ROOM.get(), []))
+        shared_chat = await load_shared_list(room_key("chat"), -30, -1, chat_histories.setdefault(CURRENT_ROOM.get(), []))
         await websocket.send_json({
             "type": "welcome",
             "playerId": player_id,
@@ -203,7 +208,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 player_data["z"] = float(msg.get("z", player_data["z"]))
                 player_data["rotY"] = float(msg.get("rotY", player_data["rotY"]))
                 await save_shared_player(player_data)
-                players[player_id] = {"ws": websocket, "data": player_data}
+                players[player_id] = {"ws": websocket, "data": player_data, "room": CURRENT_ROOM.get()}
                 is_first_join = not joined
                 joined = True
                 last_shared_save = time.monotonic()
@@ -281,8 +286,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "z": msg.get("data", {}).get("z", -4.5),
                         "playerName": player_data["name"]
                     }
-                    incense_list.append(new_incense)
-                    await save_shared_item(INCENSE_KEY, new_incense, 40)
+                    incense_lists.setdefault(CURRENT_ROOM.get(), []).append(new_incense)
+                    await save_shared_item(room_key("incense"), new_incense, 40)
                     payload["incenseItem"] = new_incense
                     
                 elif action_name == "rosary_chant":
@@ -315,8 +320,8 @@ async def websocket_endpoint(websocket: WebSocket):
             del players[player_id]
             if redis_client:
                 try:
-                    await redis_client.hdel(PLAYERS_KEY, player_id)
-                    await redis_client.zrem(ACTIVE_PLAYERS_KEY, player_id)
+                    await redis_client.hdel(room_key("players"), player_id)
+                    await redis_client.zrem(room_key("active"), player_id)
                 except Exception as error:
                     print(f"Error removing shared player {player_id}: {error}")
             await broadcast({
@@ -336,10 +341,13 @@ async def websocket_endpoint(websocket: WebSocket):
             relay_task.cancel()
             with suppress(asyncio.CancelledError):
                 await relay_task
+        CURRENT_ROOM.reset(room_token)
 
 async def broadcast(message: dict, exclude_id: str = None):
     dead_ids = []
     for pid, p in players.items():
+        if p.get("room") != CURRENT_ROOM.get():
+            continue
         if exclude_id and pid == exclude_id:
             continue
         try:
@@ -352,7 +360,7 @@ async def broadcast(message: dict, exclude_id: str = None):
 
     if redis_client:
         try:
-            await redis_client.publish(EVENTS_CHANNEL, json.dumps({
+            await redis_client.publish(room_key("events"), json.dumps({
                 "instance": INSTANCE_ID,
                 "exclude_id": exclude_id,
                 "message": message

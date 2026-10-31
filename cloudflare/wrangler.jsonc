@@ -13,7 +13,7 @@
   },
   "exports": {
     "GameRoom": {
-      "type": "durable_object",
+      "type": "durable-object",
       "storage": "sqlite"
     }
   },
