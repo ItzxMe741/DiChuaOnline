@@ -1,15 +1,11 @@
 import sys
 import asyncio
-import base64
 import json
 import uuid
 import os
-import re
 import time
 from contextlib import suppress
 from pathlib import Path
-from urllib.parse import quote
-from urllib.request import Request, urlopen
 
 if sys.platform == "win32":
     try:
@@ -28,8 +24,7 @@ PUBLIC_DIR = Path(__file__).resolve().parent / "public"
 
 REDIS_URL = os.getenv("REDIS_URL")
 redis_client = Redis.from_url(REDIS_URL, decode_responses=True) if REDIS_URL else None
-ABLY_API_KEY = os.getenv("ABLY_API_KEY")
-ABLY_CHANNEL = "chua-an-lac:default:game"
+CLOUDFLARE_REALTIME_URL = os.getenv("CLOUDFLARE_REALTIME_URL", "").strip()
 INSTANCE_ID = str(uuid.uuid4())
 ROOM_PREFIX = "chua-an-lac:default"
 PLAYERS_KEY = f"{ROOM_PREFIX}:players"
@@ -152,40 +147,9 @@ async def health_check():
     return {"status": "ok", "sharedMultiplayer": True, "room": "default"}
 
 
-@app.get("/realtime-token")
-async def realtime_token(client_id: str):
-    if not ABLY_API_KEY:
-        raise HTTPException(status_code=503, detail="Realtime provider is not configured")
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", client_id):
-        raise HTTPException(status_code=400, detail="Invalid client id")
-
-    key_name = ABLY_API_KEY.split(":", 1)[0]
-    request_url = f"https://rest.ably.io/keys/{quote(key_name, safe='.')}/requestToken"
-    request_body = json.dumps({
-        "clientId": client_id,
-        "ttl": 3600000,
-        "capability": json.dumps({ABLY_CHANNEL: ["publish", "subscribe"]})
-    }).encode("utf-8")
-    credentials = base64.b64encode(ABLY_API_KEY.encode("utf-8")).decode("ascii")
-    request = Request(
-        request_url,
-        data=request_body,
-        headers={
-            "Authorization": f"Basic {credentials}",
-            "Content-Type": "application/json"
-        },
-        method="POST"
-    )
-
-    try:
-        def issue_token():
-            with urlopen(request, timeout=8) as response:
-                return json.loads(response.read().decode("utf-8"))
-
-        return await asyncio.to_thread(issue_token)
-    except Exception as error:
-        print(f"Ably token request failed: {error}")
-        raise HTTPException(status_code=502, detail="Could not connect to realtime service")
+@app.get("/realtime-config")
+async def realtime_config():
+    return {"websocketUrl": CLOUDFLARE_REALTIME_URL}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -282,8 +246,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     await prune_stale_players()
                     last_presence_cleanup = now
                 
-                # WebSocket remains a fallback for players whose direct Ably
-                # channel is disconnected; connected clients discard this copy.
+                # WebSocket remains a fallback for players whose direct
+                # Cloudflare room connection is disconnected.
                 await broadcast({
                     "type": "player_moved",
                     "id": player_id,
@@ -294,7 +258,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "z": player_data["z"],
                     "rotY": player_data["rotY"],
                     "action": player_data["action"],
-                    "realtime": bool(ABLY_API_KEY and msg.get("realtime"))
+                    "realtime": bool(CLOUDFLARE_REALTIME_URL and msg.get("realtime"))
                 }, exclude_id=player_id)
                 
             elif msg_type == "action":

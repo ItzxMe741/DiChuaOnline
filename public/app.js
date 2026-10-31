@@ -45,10 +45,10 @@
     };
 
     let ws = null;
-    let ablyClient = null;
-    let ablyChannel = null;
-    let ablyPlayerId = null;
-    let realtimeFallbackNotified = false;
+    let cloudflareWs = null;
+    let cloudflarePlayerId = null;
+    let cloudflareReady = false;
+    let cloudflareFallbackNotified = false;
     let isLeavingPage = false;
     let scene, camera, renderer;
     let localPlayer = null;
@@ -130,7 +130,7 @@
         window.addEventListener('pagehide', () => {
             isLeavingPage = true;
             if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, 'Leaving temple');
-            if (ablyClient) ablyClient.close();
+            if (cloudflareWs && cloudflareWs.readyState < WebSocket.CLOSING) cloudflareWs.close(1000, 'Leaving temple');
         });
         window.addEventListener('pageshow', (event) => {
             if (!event.persisted || !isLeavingPage) return;
@@ -3489,7 +3489,7 @@
                 if (data.incense) data.incense.forEach(inc => createIncenseStick(inc.x, inc.y, inc.z, inc.id));
                 if (data.chatHistory) data.chatHistory.forEach(msg => appendChatMessage(msg));
                 updateOnlineCount();
-                connectAblyRealtime();
+                connectCloudflareRealtime();
                 break;
 
             case 'player_joined':
@@ -3501,7 +3501,7 @@
             case 'player_moved':
                 // A client should never render its own server echo as a remote avatar.
                 if (data.id === STATE.playerId) break;
-                if (data.realtime && isAblyConnected() && data.source !== 'ably') break;
+                if (data.realtime && isCloudflareRealtimeReady() && data.source !== 'cloudflare') break;
                 if (!remotePlayers.has(data.id) && data.name) {
                     addOrUpdateRemotePlayer({
                         id: data.id,
@@ -3552,51 +3552,80 @@
         }
     }
 
-    function isAblyConnected() {
-        return Boolean(ablyClient && ablyChannel && ablyClient.connection.state === 'connected');
+    function isCloudflareRealtimeReady() {
+        return Boolean(cloudflareWs && cloudflareWs.readyState === WebSocket.OPEN && cloudflareReady && cloudflarePlayerId === STATE.playerId);
     }
 
-    async function connectAblyRealtime() {
-        if (!window.Ably || !STATE.playerId) return;
-        if (ablyClient && ablyPlayerId === STATE.playerId) return;
-        if (ablyClient) ablyClient.close();
-        ablyClient = null;
-        ablyChannel = null;
-        ablyPlayerId = null;
+    async function connectCloudflareRealtime() {
+        if (!STATE.playerId) return;
+        if (cloudflareWs && cloudflarePlayerId === STATE.playerId && cloudflareWs.readyState < WebSocket.CLOSING) return;
+        cloudflareReady = false;
+        if (cloudflareWs && cloudflareWs.readyState < WebSocket.CLOSING) cloudflareWs.close(1000, 'Switching player session');
 
-        const clientId = STATE.playerId;
-        const client = new window.Ably.Realtime({
-            clientId,
-            authCallback: async (_tokenParams, callback) => {
-                try {
-                    const response = await fetch(`/realtime-token?client_id=${encodeURIComponent(clientId)}`, { cache: 'no-store' });
-                    if (!response.ok) throw new Error(`Realtime token request failed (${response.status})`);
-                    callback(null, await response.json());
-                } catch (error) {
-                    callback(error, null);
-                }
-            }
-        });
-
-        const channel = client.channels.get('chua-an-lac:default:game');
         try {
-            await channel.subscribe('player_moved', (message) => {
-                const movement = message.data;
-                if (!movement || movement.id === STATE.playerId) return;
-                handleServerMessage({ type: 'player_moved', ...movement, realtime: true, source: 'ably' });
-            });
-            ablyClient = client;
-            ablyChannel = channel;
-            ablyPlayerId = clientId;
-            realtimeFallbackNotified = false;
-            showToast('Đã kết nối chuyển động trực tiếp.');
-        } catch (error) {
-            console.error('Không kết nối được kênh chuyển động trực tiếp:', error);
-            if (!realtimeFallbackNotified) {
-                showToast('Chưa kết nối được kênh realtime; đang dùng đường dự phòng.');
-                realtimeFallbackNotified = true;
+            const response = await fetch('/realtime-config', { cache: 'no-store' });
+            if (!response.ok) throw new Error(`Cloudflare config request failed (${response.status})`);
+            const config = await response.json();
+            if (!config.websocketUrl) {
+                if (!cloudflareFallbackNotified) {
+                    showToast('Chưa cấu hình Cloudflare realtime; đang dùng kết nối dự phòng.');
+                    cloudflareFallbackNotified = true;
+                }
+                return;
             }
-            client.close();
+
+            const endpoint = new URL(config.websocketUrl);
+            endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : endpoint.protocol === 'http:' ? 'ws:' : endpoint.protocol;
+            if (!endpoint.pathname || endpoint.pathname === '/') endpoint.pathname = '/ws';
+            endpoint.searchParams.set('room', 'default');
+            endpoint.searchParams.set('id', STATE.playerId);
+            endpoint.searchParams.set('name', STATE.playerName);
+            endpoint.searchParams.set('robe', STATE.robeColor);
+            endpoint.searchParams.set('x', localPlayer ? localPlayer.group.position.x : 0);
+            endpoint.searchParams.set('y', localPlayer ? localPlayer.group.position.y : 0);
+            endpoint.searchParams.set('z', localPlayer ? localPlayer.group.position.z : 25.5);
+            endpoint.searchParams.set('rotY', localPlayer ? localPlayer.group.rotation.y : Math.PI);
+
+            const socket = new WebSocket(endpoint.toString());
+            cloudflareWs = socket;
+            cloudflarePlayerId = STATE.playerId;
+
+            socket.onmessage = event => {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'cf_welcome') {
+                        cloudflareReady = true;
+                        cloudflareFallbackNotified = false;
+                        (message.players || []).forEach(addOrUpdateRemotePlayer);
+                        updateOnlineCount();
+                        showToast('Đã kết nối trực tiếp qua Cloudflare.');
+                    } else if (message.type === 'cf_player_joined') {
+                        addOrUpdateRemotePlayer(message.player);
+                        updateOnlineCount();
+                    } else if (message.type === 'cf_player_moved') {
+                        handleServerMessage({ ...message, type: 'player_moved', realtime: true, source: 'cloudflare' });
+                    } else if (message.type === 'cf_player_left') {
+                        handleServerMessage({ type: 'player_left', id: message.id });
+                    }
+                } catch (error) {
+                    console.error('Cloudflare realtime message error:', error);
+                }
+            };
+
+            socket.onclose = () => {
+                if (cloudflareWs === socket) {
+                    cloudflareWs = null;
+                    cloudflareReady = false;
+                    if (!isLeavingPage) setTimeout(connectCloudflareRealtime, 3000);
+                }
+            };
+            socket.onerror = error => console.warn('Cloudflare realtime connection error:', error);
+        } catch (error) {
+            console.error('Không kết nối được Cloudflare realtime:', error);
+            if (!cloudflareFallbackNotified) {
+                showToast('Chưa kết nối được Cloudflare; đang dùng kết nối dự phòng.');
+                cloudflareFallbackNotified = true;
+            }
         }
     }
 
@@ -3890,15 +3919,11 @@
             const heartbeatDue = performance.now() - lastMovePacketAt >= 1000;
 
             if (changed || heartbeatDue) {
-                const realtime = isAblyConnected();
+                const realtime = isCloudflareRealtimeReady();
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'move', ...movement, realtime }));
                 }
-                if (realtime) {
-                    ablyChannel.publish('player_moved', movement).catch(error => {
-                        console.warn('Ably movement publish failed:', error);
-                    });
-                }
+                if (realtime) cloudflareWs.send(JSON.stringify({ type: 'move', ...movement }));
                 lastMovePacket = movement;
                 lastMovePacketAt = performance.now();
             }
