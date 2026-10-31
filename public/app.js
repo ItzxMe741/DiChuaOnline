@@ -2578,14 +2578,15 @@
         billboardGroup.add(namePlane);
 
         const chatCanvas = document.createElement('canvas');
-        chatCanvas.width = 512;
-        chatCanvas.height = 160;
+        chatCanvas.width = 640;
+        chatCanvas.height = 240;
         const chatTex = new THREE.CanvasTexture(chatCanvas);
         const chatPlane = new THREE.Mesh(
-            new THREE.PlaneGeometry(2.4, 0.75),
+            new THREE.PlaneGeometry(3.0, 1.125),
             new THREE.MeshBasicMaterial({ map: chatTex, transparent: true, side: THREE.DoubleSide })
         );
-        chatPlane.position.y = 0.65;
+        // Keep a clear vertical gap above the name tag so both stay readable.
+        chatPlane.position.y = 1.03;
         chatPlane.visible = false;
         billboardGroup.add(chatPlane);
 
@@ -2625,30 +2626,53 @@
     function showChatBubble(avatar, text) {
         if (!avatar || !avatar.chatCanvas) return;
         const ctx = avatar.chatCanvas.getContext('2d');
-        ctx.clearRect(0, 0, 512, 160);
+        const width = avatar.chatCanvas.width;
+        const height = avatar.chatCanvas.height;
+        ctx.clearRect(0, 0, width, height);
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.fillStyle = 'rgba(255, 250, 235, 0.98)';
         ctx.beginPath();
-        ctx.roundRect(16, 16, 480, 100, 20);
+        ctx.roundRect(18, 16, 604, 166, 24);
         ctx.fill();
-
-        ctx.beginPath();
-        ctx.moveTo(240, 116);
-        ctx.lineTo(256, 140);
-        ctx.lineTo(272, 116);
-        ctx.fill();
-
         ctx.strokeStyle = '#d4af37';
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 5;
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255, 250, 235, 0.98)';
+        ctx.beginPath();
+        ctx.moveTo(296, 178);
+        ctx.lineTo(320, 218);
+        ctx.lineTo(344, 178);
+        ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = '#220805';
-        ctx.font = 'bold 28px "Quicksand", sans-serif';
+        ctx.font = '700 31px "Quicksand", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const displayText = text.length > 30 ? text.substring(0, 28) + '...' : text;
-        ctx.fillText(displayText, 256, 66);
+        const maxLineWidth = 540;
+        const words = String(text || '').trim().split(/\s+/);
+        const lines = [''];
+        for (const word of words) {
+            const index = lines.length - 1;
+            const candidate = lines[index] ? `${lines[index]} ${word}` : word;
+            if (ctx.measureText(candidate).width <= maxLineWidth) {
+                lines[index] = candidate;
+            } else if (lines.length < 2) {
+                lines.push(word);
+            } else {
+                while (lines[1] && ctx.measureText(`${lines[1]}…`).width > maxLineWidth) {
+                    lines[1] = lines[1].slice(0, -1);
+                }
+                lines[1] = `${lines[1]}…`;
+                break;
+            }
+        }
+
+        const visibleLines = lines.filter(Boolean);
+        const startY = visibleLines.length > 1 ? 72 : 100;
+        visibleLines.forEach((line, index) => ctx.fillText(line, width / 2, startY + index * 54));
 
         avatar.chatTex.needsUpdate = true;
         avatar.chatPlane.visible = true;
@@ -2656,7 +2680,7 @@
         if (avatar.chatTimer) clearTimeout(avatar.chatTimer);
         avatar.chatTimer = setTimeout(() => {
             avatar.chatPlane.visible = false;
-        }, 5500);
+        }, 7000);
     }
 
     // ==========================================
